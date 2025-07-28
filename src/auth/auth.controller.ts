@@ -6,12 +6,15 @@ import {
   ParseIntPipe,
   Post,
   Res,
+  UseGuards,
 } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { CreateUserDto, SignInUserDto } from "../users/dto";
 import { Response } from "express";
 import { CookieGetter } from "../common/decorators/cookit-getter";
 import { SignInAdminDto } from "../admin/dto/signin-admin.dto";
+import { RefreshTokenGuard } from "../common/guards";
+import { GetCurrentUser, GetCurrentUserId } from "../common/decorators";
 
 @Controller("auth")
 export class AuthController {
@@ -30,22 +33,26 @@ export class AuthController {
     return this.authService.logIn(logInUserDto, res);
   }
 
+  @UseGuards(RefreshTokenGuard)
   @Post("signout")
   signout(
-    @CookieGetter("refreshToken") refreshToken: string,
+    @GetCurrentUserId() userId: number,
     @Res({ passthrough: true }) res: Response
-  ) {
-    return this.authService.logout(refreshToken, res);
+  ): Promise<boolean> {
+    return this.authService.logout(+userId, res);
   }
 
+  @UseGuards(RefreshTokenGuard)
   @HttpCode(200)
   @Post("refresh/:id")
   refresh(
-    @Param("id", ParseIntPipe) id: number,
-    @CookieGetter("refreshToken") refreshToken: string,
+    @GetCurrentUserId() userId: number,
+    @GetCurrentUser("refreshToken")
+    @CookieGetter("refreshToken")
+    refreshToken: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    return this.authService.refreshToken(id, refreshToken, res);
+    return this.authService.refreshToken(+userId, refreshToken, res);
   }
 
   // admin only can log in
@@ -58,21 +65,25 @@ export class AuthController {
     return this.authService.logInAdmin(loginAdminDto, res);
   }
 
+  @UseGuards(RefreshTokenGuard)
   @Post("signout/admin")
   signoutAdmin(
-    @CookieGetter("refreshToken") refreshToken: string,
+    @GetCurrentUserId() userId: number,
     @Res({ passthrough: true }) res: Response
-  ) {
-    return this.authService.logoutAdmin(refreshToken, res);
+  ): Promise<boolean> {
+    return this.authService.logoutAdmin(+userId, res);
   }
 
+  @UseGuards(RefreshTokenGuard)
   @HttpCode(200)
   @Post("refresh/admin/:id")
   refreshAdmin(
-    @Param("id", ParseIntPipe) id: number,
-    @CookieGetter("refreshToken") refreshToken: string,
+    @GetCurrentUserId() userId: number,
+    @GetCurrentUser("refreshToken")
+    @CookieGetter("refreshToken")
+    refreshToken: string,
     @Res({ passthrough: true }) res: Response
   ) {
-    return this.authService.refreshAdminToken(id, refreshToken, res);
+    return this.authService.refreshAdminToken(+userId, refreshToken, res);
   }
 }

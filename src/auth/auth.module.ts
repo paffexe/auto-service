@@ -6,6 +6,12 @@ import { PrismaModule } from "../prisma/prisma.module";
 import { UsersModule } from "../users/users.module";
 import { MailModule } from "../mail/mail.module";
 import { AdminModule } from "../admin/admin.module";
+import {
+  AccessTokenStrategy,
+  AdminAccessTokenStrategy,
+  AdminRefreshTokenCookieStrategy,
+  RefreshTokenCookieStrategy,
+} from "../common/strategies";
 
 @Module({
   imports: [
@@ -16,6 +22,12 @@ import { AdminModule } from "../admin/admin.module";
     AdminModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [
+    AuthService,
+    AccessTokenStrategy,
+    RefreshTokenCookieStrategy,
+    AdminAccessTokenStrategy,
+    AdminRefreshTokenCookieStrategy,
+  ],
 })
 export class AuthModule {}

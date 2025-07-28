@@ -18,6 +18,12 @@ import { MailService } from "../mail/mail.service";
 import { CreateAdminDto } from "../admin/dto/create-admin.dto";
 import { AdminService } from "../admin/admin.service";
 import { SignInAdminDto } from "../admin/dto/signin-admin.dto";
+import {
+  JwtAdminPayload,
+  JwtPayload,
+  ResponseFields,
+  Tokens,
+} from "../common/types";
 
 @Injectable()
 export class AuthService {
@@ -30,11 +36,10 @@ export class AuthService {
   ) {}
 
   async generateTokens(user: User) {
-    const payload = {
+    const payload: JwtPayload = {
       id: user.id,
-      name: user.full_name,
+      email: user.email,
       is_active: user.is_activated,
-      role: user.role,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -54,9 +59,9 @@ export class AuthService {
   }
 
   async generateAdminTokens(admin: Admin) {
-    const payload = {
+    const payload: JwtAdminPayload = {
       id: admin.id,
-      name: admin.full_name,
+      email: admin.email,
       is_creator: admin.is_creator,
     };
 
@@ -129,66 +134,63 @@ export class AuthService {
     return { message: "Tizimga xush kelibsiz", id: user.id, accessToken };
   }
 
-  async logout(refreshToken: string, res: Response) {
-    let userData: any;
+  async logout(userId: number, res: Response): Promise<boolean> {
+    const user = await this.prismaService.user.updateMany({
+      where: {
+        id: userId,
+        refresh_token: {
+          not: null,
+        },
+      },
+      data: {
+        refresh_token: null,
+      },
+    });
 
-    try {
-      userData = await this.jwtService.verify(refreshToken, {
-        secret: process.env.REFRESH_TOKEN_KEY,
-      });
-    } catch (error) {
-      console.log(error);
-      throw new BadRequestException(error);
+    if (!user) {
+      throw new ForbiddenException("Access denied");
     }
-
-    if (!userData) {
-      throw new ForbiddenException("User not verified");
-    }
-
-    //
-    await this.userService.updateRefreshToken(userData.id, "");
-
     res.clearCookie("refreshToken");
-    return {
-      message: "User logged out successfully",
-    };
+    return true;
   }
 
   async refreshToken(
     userId: number,
-    refreshTokenFromCookie: string,
+    refreshToken: string,
     res: Response
-  ) {
-    const decodedToken = await this.jwtService.decode(refreshTokenFromCookie);
-
-    if (userId !== decodedToken["id"]) {
-      throw new ForbiddenException("Ruxsat etilmagan");
-    }
-
+  ): Promise<ResponseFields> {
     const user = await this.prismaService.user.findUnique({
       where: { id: userId },
     });
 
-    if (!user || !user.refresh_token) {
-      throw new NotFoundException("User not found");
+    if (!user || !user.refresh_token)
+      throw new ForbiddenException("Access denied");
+
+    const rtMatches = await bcrypt.compare(refreshToken, user.refresh_token);
+
+    if (!rtMatches) {
+      throw new ForbiddenException("Access denied");
     }
 
-    const { accessToken, refreshToken } = await this.generateTokens(user);
+    const tokens: Tokens = await this.generateTokens(user);
 
-    const refresh_token = await bcrypt.hash(refreshToken, 7);
-    await this.userService.updateRefreshToken(user.id, refresh_token);
+    const hashedRefreshToken = await bcrypt.hash(tokens.accessToken, 7);
 
-    res.cookie("refreshToken", refreshToken, {
-      maxAge: Number(process.env.COOKIE_TIME),
+    await this.prismaService.user.update({
+      where: { id: user.id },
+      data: { refresh_token: hashedRefreshToken },
+    });
+
+    res.cookie("refreshToken", tokens.refreshToken, {
+      maxAge: +process.env.COOKIE_TIME!,
       httpOnly: true,
     });
 
-    const response = {
-      message: "User refreshed",
+    return {
+      message: "User refreshed successfully",
       userId: user.id,
-      accessToken: accessToken,
+      accessToken: tokens.accessToken,
     };
-    return response;
   }
 
   // admin
@@ -226,7 +228,6 @@ export class AuthService {
     console.log("enteredPassword:", log_password);
     console.log("admin.password:", admin?.password);
 
-
     if (!admin) {
       throw new UnauthorizedException("Email yoki password noto'g'ri");
     }
@@ -252,65 +253,60 @@ export class AuthService {
     return { message: "Tizimga xush kelibsiz", id: admin.id, accessToken };
   }
 
-  async logoutAdmin(refreshToken: string, res: Response) {
-    let adminData: any;
+  async logoutAdmin(userId: number, res: Response) {
+    const user = await this.prismaService.admin.updateMany({
+      where: {
+        id: userId,
+        refresh_token: {
+          not: null,
+        },
+      },
+      data: {
+        refresh_token: null,
+      },
+    });
 
-    try {
-      adminData = await this.jwtService.verify(refreshToken, {
-        secret: process.env.REFRESH_TOKEN_KEY,
-      });
-    } catch (error) {
-      console.log(error);
-      throw new BadRequestException(error);
-    }
-
-    if (!adminData) {
-      throw new ForbiddenException("Admin not verified");
-    }
-
-    //
-    await this.adminService.updateRefreshToken(adminData.id, "");
-
+    if (!user) throw new ForbiddenException("Access denied");
     res.clearCookie("refreshToken");
-    return {
-      message: "Admin logged out successfully",
-    };
+    return true;
   }
 
   async refreshAdminToken(
-    adminId: number,
-    refreshTokenFromCookie: string,
+    userId: number,
+    refreshToken: string,
     res: Response
-  ) {
-    const decodedToken = await this.jwtService.decode(refreshTokenFromCookie);
-
-    if (adminId !== decodedToken["id"]) {
-      throw new ForbiddenException("Ruxsat etilmagan");
-    }
-
-    const admin = await this.prismaService.admin.findUnique({
-      where: { id: adminId },
+  ): Promise<ResponseFields> {
+    const user = await this.prismaService.admin.findUnique({
+      where: { id: userId },
     });
 
-    if (!admin || !admin.refresh_token) {
-      throw new NotFoundException("admin not found");
+    if (!user || !user.refresh_token)
+      throw new ForbiddenException("Access denied");
+
+    const rtMatches = await bcrypt.compare(refreshToken, user.refresh_token);
+
+    if (!rtMatches) {
+      throw new ForbiddenException("Access denied");
     }
 
-    const { accessToken, refreshToken } = await this.generateAdminTokens(admin);
+    const tokens: Tokens = await this.generateAdminTokens(user);
 
-    const refresh_token = await bcrypt.hash(refreshToken, 7);
-    await this.adminService.updateRefreshToken(admin.id, refresh_token);
+    const hashedRefreshToken = await bcrypt.hash(tokens.accessToken, 7);
 
-    res.cookie("refreshToken", refreshToken, {
-      maxAge: Number(process.env.COOKIE_TIME),
+    await this.prismaService.admin.update({
+      where: { id: user.id },
+      data: { refresh_token: hashedRefreshToken },
+    });
+
+    res.cookie("refreshToken", tokens.refreshToken, {
+      maxAge: +process.env.ADMIN_COOKIE_TIME!,
       httpOnly: true,
     });
 
-    const response = {
-      message: "admin refreshed",
-      adminId: admin.id,
-      accessToken: accessToken,
+    return {
+      message: "User refreshed successfully",
+      userId: user.id,
+      accessToken: tokens.accessToken,
     };
-    return response;
   }
 }
