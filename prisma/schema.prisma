@@ -15,18 +15,20 @@ enum Role {
 }
 
 model User {
-  id              Int       @id @default(autoincrement())
-  full_name       String    @db.VarChar(40)
-  email           String    @unique @db.VarChar(40)
-  phone           String    @db.VarChar(15)
+  id              Int          @id @default(autoincrement())
+  full_name       String       @db.VarChar(40)
+  email           String       @unique @db.VarChar(40)
+  phone           String       @db.VarChar(15)
   password        String
   refresh_token   String?
-  role            Role      @default(client)
-  is_approved     Boolean?  @default(false)
-  is_activated    Boolean   @default(false)
-  activation_link String?   @default(uuid())
-  createdAt       DateTime? @default(now())
-  updatedAt       DateTime? @updatedAt
+  role            Role         @default(client)
+  is_approved     Boolean?     @default(false)
+  is_activated    Boolean      @default(false)
+  activation_link String?      @default(uuid())
+  createdAt       DateTime?    @default(now())
+  updatedAt       DateTime?    @updatedAt
+  cars            Car[]
+  CarHistory      CarHistory[]
 
   @@map("users")
 }
@@ -41,4 +43,41 @@ model Admin {
   is_creator    Boolean @default(false)
 
   @@map("admin")
+}
+
+model Regions {
+  id        Int         @id @default(autoincrement())
+    name      String      @db.VarChar(80)
+  districts Districts[]
+
+  @@map("regions")
+}
+
+model Districts {
+  id       Int     @id @default(autoincrement())
+  name     String  @db.VarChar(80)
+  regionId Int
+  region   Regions @relation(fields: [regionId], references: [id])
+
+  @@map("districts")
+}
+
+model Car {
+  id              Int          @id @default(autoincrement())
+  plate_number    String       @db.VarChar(80)
+  vin_number      String       @db.VarChar(80)
+  year            String       @db.VarChar(80)
+  current_user_id Int
+  current_user    User         @relation(fields: [current_user_id], references: [id])
+  car_history     CarHistory[]
+}
+
+model CarHistory {
+  id           Int       @id @default(autoincrement())
+  purchased_at DateTime
+  sold_at      DateTime?
+  car_id       Int
+  car          Car       @relation(fields: [car_id], references: [id])
+  owner_id     Int
+  owner        User      @relation(fields: [owner_id], references: [id])
 }
